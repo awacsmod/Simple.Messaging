@@ -12,10 +12,9 @@ namespace Simple.Messaging
     /// </summary>
     public abstract class FlowControllerBase: IFail, IAlways
     {
-        internal List<Task> tasks;
-        internal List<IFlowElement> elements;
-        internal CancellationTokenSource source;
-        internal CancellationToken token;
+        internal List<Task> tasks = new List<Task>();
+        internal List<IFlowElement> elements = new List<IFlowElement>();
+        internal CancellationTokenSource source  = new CancellationTokenSource();
         internal void callFailAndAlways(Exception ex) 
         {
             callFail(ex);
@@ -26,7 +25,10 @@ namespace Simple.Messaging
         { if (this.Always != null) { Always(); } }
 
         internal void callFail(Exception ex)
-        { if (this.Fail != null) { Fail(ex); } }
+        { 
+            if (this.Fail != null) { Fail(ex); }
+            this.source.Cancel();
+        }
 
         internal IFlowElement register(IFlowElement element)
         {
@@ -138,7 +140,7 @@ namespace Simple.Messaging
         /// </summary>
         public void WaitAll()
         {
-            Task.WaitAll(this.tasks.ToArray(), this.token);
+            Task.WaitAll(this.tasks.ToArray(), this.source.Token);
         }
     }
 
@@ -163,11 +165,7 @@ namespace Simple.Messaging
         /// </summary>
         public FlowController()
         {
-            this.elements = new List<IFlowElement>();
-            this.tasks = new List<Task>();
             this.currentMessage = null;
-            this.source = new CancellationTokenSource();
-            this.token = source.Token;
         }
 
         /// <summary>
@@ -180,8 +178,8 @@ namespace Simple.Messaging
         /// <exception cref="Simple.Messaging.FlowRegisterException">Occurs if the previous method returns a value.</exception>
         public void Register(Action method, Action onDone = null, Action<Exception> onFail = null, Action onAlways = null)
         {
-            this.register(new Function(method, this.token));
-            IFlowElement f = this.register(new Function(() => { this.CurrentMessage = null; }, this.token));
+            this.register(new Function(method, this.source.Token));
+            IFlowElement f = this.register(new Function(() => { this.CurrentMessage = null; }, this.source.Token));
             this.registerAdditionalEvents(ref f, onDone, onFail, onAlways);
         }
 
@@ -196,8 +194,8 @@ namespace Simple.Messaging
         /// <exception cref="Simple.Messaging.FlowRegisterException">Occurs if the previous method returns a value.</exception>
         public void RegisterNoParam<TResult>(Func<TResult> method, Action<TResult> onDone = null, Action<Exception> onFail = null, Action onAlways = null)
         {
-            this.register(new InitFunction<TResult>(method, this.token));
-            IFlowElement f = this.register<TResult>(new Function<TResult, TResult>((value) => { this.CurrentMessage = value; return value; }, this.token));
+            this.register(new InitFunction<TResult>(method, this.source.Token));
+            IFlowElement f = this.register<TResult>(new Function<TResult, TResult>((value) => { this.CurrentMessage = value; return value; }, this.source.Token));
             this.registerAdditionalEvents<TResult>(ref f, onDone, onFail, onAlways);
         }
 
@@ -213,8 +211,8 @@ namespace Simple.Messaging
         /// <exception cref="Simple.Messaging.FlowRegisterException">Occurs if the input type provided does not match the return type of the previous method.</exception>
         public void Register<T, TResult>(Func<T, TResult> method, Action<TResult> onDone = null, Action<Exception> onFail = null, Action onAlways = null)
         {
-            this.register<T>(new Function<T, TResult>(method, this.token));
-            IFlowElement f = this.register<TResult>(new Function<TResult, TResult>((value) => { this.CurrentMessage = value; return value; }, this.token));
+            this.register<T>(new Function<T, TResult>(method, this.source.Token));
+            IFlowElement f = this.register<TResult>(new Function<TResult, TResult>((value) => { this.CurrentMessage = value; return value; }, this.source.Token));
             this.registerAdditionalEvents<TResult>(ref f, onDone, onFail, onAlways);
         }
 
@@ -229,8 +227,8 @@ namespace Simple.Messaging
         /// <exception cref="Simple.Messaging.FlowRegisterException">Occurs if the type provided does not match the return type of the previous method.</exception>
         public void Register<T>(Action<T> method, Action onDone = null, Action<Exception> onFail = null, Action onAlways = null)
         {
-            this.register<T>(new NoReturnFunction<T>(method, this.token));
-            IFlowElement f = this.register(new Function(() => { this.CurrentMessage = null; }, this.token));
+            this.register<T>(new NoReturnFunction<T>(method, this.source.Token));
+            IFlowElement f = this.register(new Function(() => { this.CurrentMessage = null; }, this.source.Token));
             this.registerAdditionalEvents(ref f, onDone, onFail, onAlways);
         }
 
@@ -246,7 +244,7 @@ namespace Simple.Messaging
         /// <exception cref="Simple.Messaging.FlowRegisterException">Occurs if the type provided does not match the return type of the previous method.</exception>
         public void RegisterWithConstant<T>(Action<T> method, T constant, Action onDone = null, Action<Exception> onFail = null, Action onAlways = null) 
         {
-            this.register(new InitFunction<T>(() => { return constant; }, this.token));
+            this.register(new InitFunction<T>(() => { return constant; }, this.source.Token));
             Register<T>(method, onDone, onFail, onAlways);
         }
 
@@ -263,7 +261,7 @@ namespace Simple.Messaging
         /// <exception cref="Simple.Messaging.FlowRegisterException">Occurs if the type provided does not match the return type of the previous method.</exception>
         public void RegisterWithConstant<T, TResult>(Func<T, TResult> method, T constant, Action<TResult> onDone = null, Action<Exception> onFail = null, Action onAlways = null)
         {
-            this.register(new InitFunction<T>(() => { return constant; }, this.token));
+            this.register(new InitFunction<T>(() => { return constant; }, this.source.Token));
             Register<T, TResult>(method, onDone, onFail, onAlways);
         }
 
@@ -330,11 +328,7 @@ namespace Simple.Messaging
         /// </summary>
         public FlowController()
         {
-            this.elements = new List<IFlowElement>();
-            this.tasks = new List<Task>();
             this.currentMessage = default(T);
-            this.source = new CancellationTokenSource();
-            this.token = source.Token;
         }
         /// <summary>
         /// Creates a new instance of the generic Simple.Messaging.FlowController class.
@@ -342,11 +336,7 @@ namespace Simple.Messaging
         /// <param name="message">The initial message status.</param>
         public FlowController(T message)
         {
-            this.elements = new List<IFlowElement>();
-            this.tasks = new List<Task>();
             this.currentMessage = message;
-            this.source = new CancellationTokenSource();
-            this.token = source.Token;
         }
 
         /// <summary>
@@ -370,7 +360,7 @@ namespace Simple.Messaging
         /// <param name="onAlways">Optional method that is executed after the method has finished (e.g. logging or branching).</param>
         public void Register(MessageMethodDelegate method, Action onDone = null, Action<Exception> onFail = null, Action onAlways = null) 
         {
-            IFlowElement f = this.register(new NoReturnDelegateFunction<T>(method, this, this.token));
+            IFlowElement f = this.register(new NoReturnDelegateFunction<T>(method, this, this.source.Token));
             this.registerAdditionalEvents(ref f, onDone, onFail, onAlways);
         }
 
@@ -383,9 +373,9 @@ namespace Simple.Messaging
         /// <param name="onAlways">Optional method that is executed after the method has finished (e.g. logging or branching).</param>
         public void Register(Func<T, T> method, Action onDone = null, Action<Exception> onFail = null, Action onAlways = null)
         {
-            this.register(new InitFunction<T>(() => { return this.currentMessage; }, this.token));
-            this.register<T>(new Function<T, T>(method, this.token));
-            IFlowElement f = this.register<T>(new NoReturnFunction<T>((param) => { this.currentMessage = param; }, this.token));
+            this.register(new InitFunction<T>(() => { return this.currentMessage; }, this.source.Token));
+            this.register<T>(new Function<T, T>(method, this.source.Token));
+            IFlowElement f = this.register<T>(new NoReturnFunction<T>((param) => { this.currentMessage = param; }, this.source.Token));
             this.registerAdditionalEvents(ref f, onDone, onFail, onAlways);
         }
 
@@ -398,7 +388,7 @@ namespace Simple.Messaging
         /// <param name="onAlways">Optional method that is executed after the method has finished (e.g. logging or branching).</param>
         public void RegisterRouter(Action<FlowController<T>> method, Action onDone = null, Action<Exception> onFail = null, Action onAlways = null) 
         {
-            IFlowElement f = this.register(new RouterFunction<T>(method, this, this.token));
+            IFlowElement f = this.register(new RouterFunction<T>(method, this, this.source.Token));
             this.registerAdditionalEvents(ref f, onDone, onFail, onAlways);
         }
     }
